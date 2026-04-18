@@ -1,0 +1,41 @@
+name: S&P500 Weekly Signal
+
+on:
+  schedule:
+    # 매주 월요일 오전 9시 (UTC 기준 월요일 00:00 = 한국 09:00)
+    - cron: '0 0 * * 1'
+  workflow_dispatch:  # 수동 실행 허용
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 패키지 설치
+        run: |
+          pip install -r requirements.txt
+
+      - name: 분석 실행
+        env:
+          FRED_API_KEY:      ${{ secrets.FRED_API_KEY }}
+          TELEGRAM_TOKEN:    ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID:  ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python main.py
+
+      - name: 결과 커밋
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/
+          git diff --staged --quiet || git commit -m "📊 Weekly signal update $(date +'%Y-%m-%d')"
+          git push
+        continue-on-error: true
