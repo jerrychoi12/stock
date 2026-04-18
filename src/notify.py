@@ -1,5 +1,8 @@
 """
 텔레그램 봇 메시지 발송 모듈
+- 2단계 장세 (추세/변동성) 반영
+- 이전 주 대비 변화 표시
+- parse_mode 없이 발송
 """
 
 import requests
@@ -22,36 +25,6 @@ REGIME_STATS = {
     '급락': {'avg': '-25.2%', 'prob': '0%',    'loss': '100%'},
 }
 
-STRATEGY_ACTION = {
-    '폭등': '풀포지션 100% 유지',
-    '상승': '풀포지션 100% 유지',
-    '횡보': '50~70% 유지',
-    '하락': '20%로 축소',
-    '급락': '현금 100% 대피',
-}
-
-TRANSITION_DESC = {
-    '폭등': [
-        '상승 전환 시 → 비중 유지',
-        '횡보 전환 시 → 70%로 축소 후 모니터링',
-    ],
-    '상승': [
-        '횡보 전환 시 → 70%로 축소 후 모니터링',
-        '하락 전환 시 → 20%로 비중 축소',
-    ],
-    '횡보': [
-        '정배열 완성 시, 상승 추세 전환 예상 → 70%로 늘리세요',
-        '모델 예측 수익률 -3% 이하 또는 MA20 이탈 시, 하락 추세 전환 예상 → 비중 축소하세요',
-    ],
-    '하락': [
-        'MA5 데드크로스 발생 시, 급락 위험 → 즉시 현금화하세요',
-        'VIX 안정 + 모델 예측 수익률 -3% 이상 시, 횡보 전환 예상 → 재진입 준비하세요',
-    ],
-    '급락': [
-        '모델 예측 수익률 -10% 이상 + VIX 하락 시, 하락 전환 예상 → 소량 재진입 준비하세요',
-    ],
-}
-
 
 def load_prev():
     if os.path.exists(PREV_RESULT_PATH):
@@ -69,20 +42,8 @@ def save_prev(result):
         json.dump(result, f, ensure_ascii=False, default=str)
 
 
-def with_prev(curr, prev_val, curr_fmt, diff_fmt, unit=''):
-    """현재값 (변화량 / 전주 이전값) 형식"""
-    if prev_val is None:
-        return curr_fmt
-    diff = curr - prev_val
-    sign = '+' if diff >= 0 else ''
-    if diff == 0:
-        return f'{curr_fmt} (변동 없음 / 전주 {curr_fmt})'
-    prev_fmt = curr_fmt.__class__(curr_fmt)  # 같은 형식으로 전주값 포맷
-    return f'{curr_fmt} ({sign}{diff:{diff_fmt}}{unit} / 전주 {prev_fmt})'
-
-
 def fmt_stat(curr, prev, curr_fmt_fn, diff_fmt, unit=''):
-    """현재값 (변화량 / 전주값) — 포맷 함수 방식"""
+    """현재값 (변화량 / 전주값) 형식"""
     curr_str = curr_fmt_fn(curr)
     if prev is None:
         return curr_str
@@ -105,7 +66,7 @@ def rsi_comment(v):
 def vix_comment(v):
     if v >= 30: return '극도의 공포 — 급락 위험'
     if v >= 25: return '공포 구간 — 하락 주의'
-    if v >= 20: return '불안 심리 증가'
+    if v >= 20: return '불안 심리 증가 — 변동성 장세'
     if v >= 15: return '안정적, 시장 공포 낮음'
     return '공포 없음 — 과열 주의'
 
@@ -125,18 +86,20 @@ def t10y2y_comment(v):
 
 
 def build_message(result, prev=None):
-    regime  = result['regime']
-    emoji   = REGIME_EMOJI.get(regime, '')
-    weight  = int(result['weight'] * 100)
-    stats   = REGIME_STATS[regime]
-    p       = prev or {}
-    bull_str = ('정배열' if result['perfect_bull']
-                else ('역배열' if result['perfect_bear'] else '중립'))
-    regime_changed = p.get('regime') and p.get('regime') != regime
+    regime      = result['regime']
+    emoji       = REGIME_EMOJI.get(regime, '')
+    stats       = REGIME_STATS[regime]
+    p           = prev or {}
+    is_volatile = result.get('is_volatile', False)
+    bull_str    = ('정배열' if result['perfect_bull']
+                   else ('역배열' if result['perfect_bear'] else '중립'))
+
+    regime_changed   = p.get('regime') and p.get('regime') != regime
+    volatile_changed = p.get('is_volatile') is not None and p.get('is_volatile') != is_volatile
 
     sep = '─' * 32
 
-    # ── 모델 예측 수익률 포맷
+    # 모델 예측 수익률
     pred     = result['pred_13w']
     pred_str = f'+{pred:.1f}%' if pred >= 0 else f'{pred:.1f}%'
     pred_line = fmt_stat(pred, p.get('pred_13w'),
@@ -149,7 +112,12 @@ def build_message(result, prev=None):
         sep,
     ]
 
-    # 장세
+    # 대분류 (추세/변동성)
+    vol_label = '변동성 장세 ⚠️' if is_volatile else '추세 장세'
+    vol_change = '  ← 장세 유형 전환!' if volatile_changed else ''
+    lines.append(f'[시장 국면] {vol_label} (VIX {result["vix"]:.1f}){vol_change}')
+
+    # 소분류 (장세)
     if regime_changed:
         lines.append(f'[현재 장세] {REGIME_EMOJI.get(p["regime"],"")} {p["regime"]} → {emoji} {regime}  ⚠️ 장세 전환')
     else:
@@ -166,11 +134,10 @@ def build_message(result, prev=None):
 
     # 전략
     lines += [
-        f'[전략] 권장 투자비중: {weight}%',
-        f'  {STRATEGY_ACTION[regime]}',
+        f'[전략] 권장 포지션: {result["pos_desc"]}',
         '',
     ]
-    for t in TRANSITION_DESC.get(regime, []):
+    for t in result.get('transition', []):
         lines.append(f'  • {t}')
 
     lines += ['', sep, '[시장 상태]', '']
@@ -188,47 +155,27 @@ def build_message(result, prev=None):
     # RSI
     rsi_line = fmt_stat(result['rsi'], p.get('rsi'),
                         lambda v: f'{v:.1f}', '.1f')
-    lines += [
-        f'  RSI     : {rsi_line}',
-        f'            {rsi_comment(result["rsi"])}',
-        '',
-    ]
+    lines += [f'  RSI     : {rsi_line}', f'            {rsi_comment(result["rsi"])}', '']
 
     # VIX
     vix_line = fmt_stat(result['vix'], p.get('vix'),
                         lambda v: f'{v:.1f}', '.1f')
-    lines += [
-        f'  VIX     : {vix_line}',
-        f'            {vix_comment(result["vix"])}',
-        '',
-    ]
+    lines += [f'  VIX     : {vix_line}', f'            {vix_comment(result["vix"])}', '']
 
     # DGS10
     dgs_line = fmt_stat(result['dgs10'], p.get('dgs10'),
                         lambda v: f'{v:.2f}%', '.2f', '%')
-    lines += [
-        f'  DGS10   : {dgs_line}',
-        f'            {dgs10_comment(result.get("dgs10_regime", 0))}',
-        '',
-    ]
+    lines += [f'  DGS10   : {dgs_line}', f'            {dgs10_comment(result.get("dgs10_regime", 0))}', '']
 
     # T10Y2Y
     t2y_line = fmt_stat(result['t10y2y'], p.get('t10y2y'),
                         lambda v: f'{v:+.3f}%', '.3f', '%')
-    lines += [
-        f'  T10Y2Y  : {t2y_line}',
-        f'            {t10y2y_comment(result["t10y2y"])}',
-        '',
-    ]
+    lines += [f'  T10Y2Y  : {t2y_line}', f'            {t10y2y_comment(result["t10y2y"])}', '']
 
     # Fwd EPS
     eps_line = fmt_stat(result['eps'], p.get('eps'),
                         lambda v: f'{v:.2f}', '.2f')
-    lines += [
-        f'  Fwd EPS : {eps_line}',
-        '',
-        sep,
-    ]
+    lines += [f'  Fwd EPS : {eps_line}', '', sep]
 
     # 선행 경보
     if result['signals']:
