@@ -37,7 +37,7 @@ def main():
     print(f'{"="*50}')
     print(f'날짜:        {result["date"]}')
     print(f'S&P500:      {result["close"]:,.0f}')
-    print(f'예측 13w:    {result["pred_13w"]:+.2f}%')
+    print(f'모델 예측 수익률: {result["pred_13w"]:+.2f}%')
     print(f'장세:        {result["regime"]}')
     print(f'권장 비중:   {int(result["weight"]*100)}%')
     print(f'선행 신호:   {len(result["signals"])}개')
