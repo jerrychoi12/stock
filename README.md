@@ -81,3 +81,4 @@ Actions → Weekly Signal → Run workflow
 - 매크로(DGS10, T10Y2Y): 52.6%
 - 수요(VIX, RSI): 24.0%
 - 기업가치(EPS): 23.4%
+
