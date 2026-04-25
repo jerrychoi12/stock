@@ -15,7 +15,7 @@ import os
 FRED_API_KEY = os.environ.get('FRED_API_KEY', '')
 
 
-def fetch_fred(series_id, api_key, start='1990-01-01'):
+def fetch_fred(series_id, api_key, start='1990-01-01', max_retries=3):
     url = (
         f'https://api.stlouisfed.org/fred/series/observations'
         f'?series_id={series_id}'
@@ -24,9 +24,20 @@ def fetch_fred(series_id, api_key, start='1990-01-01'):
         f'&observation_start={start}'
         f'&sort_order=asc'
     )
-    r = requests.get(url, timeout=30)
-    r.raise_for_status()
-    data = r.json()
+    import time
+    for attempt in range(max_retries):
+        try:
+            r = requests.get(url, timeout=60)
+            r.raise_for_status()
+            data = r.json()
+            break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait = (attempt + 1) * 10
+                print(f'  FRED {series_id} 재시도 {attempt+1}/{max_retries} ({wait}초 대기)...')
+                time.sleep(wait)
+            else:
+                raise e
 
     if 'observations' not in data or len(data['observations']) == 0:
         raise ValueError(f'FRED {series_id} 데이터 없음')
