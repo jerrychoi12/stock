@@ -2,9 +2,12 @@ name: S&P500 Weekly Signal
 
 on:
   schedule:
-    # 매주 토요일 오전 9시 한국시간 (UTC 토요일 00:00)
-    - cron: '0 0 * * 6'
-  workflow_dispatch:  # 수동 실행 허용
+    # 정각보다는 7분처럼 비어있는 시간을 추천합니다.
+    - cron: '7 0 * * 6' 
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   analyze:
@@ -14,6 +17,9 @@ jobs:
     steps:
       - name: 코드 체크아웃
         uses: actions/checkout@v4
+        with:
+          # push를 위해 전체 히스토리를 가져오거나 인증을 유지합니다.
+          persist-credentials: true
 
       - name: Python 설정
         uses: actions/setup-python@v5
@@ -26,9 +32,9 @@ jobs:
 
       - name: 분석 실행
         env:
-          FRED_API_KEY:      ${{ secrets.FRED_API_KEY }}
-          TELEGRAM_TOKEN:    ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID:  ${{ secrets.TELEGRAM_CHAT_ID }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python main.py
 
@@ -37,6 +43,8 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add data/
-          git diff --staged --quiet || git commit -m "📊 Weekly signal update $(date +'%Y-%m-%d')"
-          git push
-        continue-on-error: true
+          # 변경사항이 있을 때만 커밋
+          if ! git diff --staged --quiet; then
+            git commit -m "📊 Weekly signal update $(date +'%Y-%m-%d')"
+            git push
+          fi
