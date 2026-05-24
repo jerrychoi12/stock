@@ -2,17 +2,17 @@
   "date": "2026-05-24",
   "close": 7473.47,
   "rsi": 70.92526560096891,
-  "vix": 17.52,
-  "dgs10": 4.605,
-  "t10y2y": 0.506,
+  "vix": 16.76,
+  "dgs10": 4.57,
+  "t10y2y": 0.43,
   "eps": 274.0,
   "disp_ma20": 7.712442152161894,
   "disp_ma60": 14.520479163923863,
-  "dgs10_regime": 0.36890384615384697,
+  "dgs10_regime": 0.328269230769231,
   "perfect_bull": true,
   "perfect_bear": false,
   "is_volatile": false,
-  "pred_13w": 0.15301887691020966,
+  "pred_13w": 0.4527812600135803,
   "regime": "횡보",
   "leverage": 2,
   "weight": 0.7,
@@ -28,8 +28,8 @@
     ]
   ],
   "importances": {
-    "macro": 72.3,
-    "demand": 27.7,
+    "macro": 73.0,
+    "demand": 27.0,
     "fund": 0.0
   }
 }
