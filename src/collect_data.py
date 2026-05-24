@@ -1,8 +1,9 @@
 """
 데이터 수집 모듈
-- S&P500 주가/이평선/RSI: FRED API (SP500) — yfinance 대신 안정적
+- S&P500 주가/이평선/RSI: FRED API (SP500)
 - VIX, DGS10, T10Y2Y: FRED API
 - Forward EPS: S&P Global xlsx (실패 시 저장값 사용)
+- 모든 지표 주봉 변환 시 last() 사용 (금요일 종가 기준)
 """
 
 import pandas as pd
@@ -10,6 +11,7 @@ import numpy as np
 import requests
 import io
 import os
+import time
 
 
 FRED_API_KEY = os.environ.get('FRED_API_KEY', '')
@@ -24,7 +26,6 @@ def fetch_fred(series_id, api_key, start='1990-01-01', max_retries=3):
         f'&observation_start={start}'
         f'&sort_order=asc'
     )
-    import time
     for attempt in range(max_retries):
         try:
             r = requests.get(url, timeout=60)
@@ -65,6 +66,7 @@ def fetch_sp500(api_key, start='1990-01-01'):
     sp_daily.index = pd.to_datetime(sp_daily.index)
     sp_daily = sp_daily.sort_index()
 
+    # 금요일 종가 기준
     sp_weekly = sp_daily.resample('W').last()
     sp_weekly.columns = ['Close']
     sp_weekly = sp_weekly.dropna()
@@ -133,10 +135,10 @@ def collect_all(fred_api_key=None):
     forward_eps = fetch_forward_eps()
     print(f'  Forward EPS: {forward_eps:.2f}' if forward_eps else '  Forward EPS 실패 — 저장값 사용')
 
-    # 주봉 변환
-    vix_w = vix.resample('W').mean()
-    dgs_w = dgs.resample('W').mean()
-    t2y_w = t2y.resample('W').mean()
+    # 모두 금요일 종가 기준으로 주봉 변환
+    vix_w = vix.resample('W').last()
+    dgs_w = dgs.resample('W').last()
+    t2y_w = t2y.resample('W').last()
 
     # Date 컬럼으로 변환
     df = sp.reset_index()
